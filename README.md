@@ -96,7 +96,8 @@ You will get 3 important pieces of data for Stellar Core:
     ```
     docker container create --name hawking-stellar-core -v hawking_core-data:/data hello-world
     docker cp ./data-result/buckets hawking-stellar-core:/data/
-    docker cp ./history-result/ hawking-stellar-core:/data/history/
+    docker cp ./history-result/ hawking-stellar-core:/data/history
+    docker rm hawking-stellar-core
     ```
     
 * `history-result` directory: contains the full history that can be published to help other validator nodes to catch up (e.g., S3, GCS, IPFS, or any other file storage).
