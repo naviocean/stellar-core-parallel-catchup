@@ -26,9 +26,10 @@ Arguments:
 
 * `DOCKER_COMPOSE_FILE`: use `docker-compose.pubnet.yaml` for the public network (`docker-compose.testnet.yaml` for testnet).
 * `LEDGER_MIN`: smallest ledger number you want. Use `1` for doing a full sync.
-* `LEDGER_MAX`: largest ledger number you want, usually you'll want the latest one which is exposed as `core_latest_ledger` in any synced Horizon server, e.g. https://stellar-horizon.satoshipay.io/.
+* `LEDGER_MAX`: largest ledger number you want, usually you'll want the latest one which is exposed as `core_latest_ledger` in any synced Horizon server, e.g. https://horizon.stellar.org/.
 * `CHUNK_SIZE`: number of ledgers to work on in one worker.
 * `WORKERS`: number of workers that should be spawned. For best performance this should not exceed the number of CPUs.
+`Note: LEDGER_MAX % CHUNK_SIZE == 0`
 
 ## Hardware sizing and timing examples
 
@@ -62,7 +63,7 @@ docker ps
 ```
 
 ```
-git clone git@github.com:satoshipay/stellar-core-parallel-catchup.git
+git clone https://github.com/naviocean/stellar-core-parallel-catchup.git
 cd stellar-core-parallel-catchup
 ./catchup.sh docker-compose.pubnet.yaml 1 20971520 32768 32 2>&1 | tee catchup.log
 ```
@@ -75,9 +76,28 @@ You will get 3 important pieces of data for Stellar Core:
     docker exec catchup-result_stellar-core-postgres_1 pg_dump -F d -f catchup-sqldump -j 10 -U postgres -d stellar-core
     ```
 
-    Then copy the `catchup-sqldump` directory to the target container/machine and restore with `pg_restore`.
+    Then copy the `catchup-sqldump` directory to the target container/machine 
+    
+    ```
+    docker cp catchup-result_stellar-core-postgres_1:/catchup-sqldump ./
+    ```
+    
+    and restore with `pg_restore`.
+    
+    ```
+    docker cp catchup-sqldump hawking_stellar-core-postgres_1:/
+    docker exec hawking_stellar-core-postgres_1 pg_restore -F d /catchup-sqldump -j 10 -U postgres -d stellar-core
+    ```
 
 * `data-result` directory: contains the `buckets` directory that Stellar Core needs for continuing with the current state in the SQL database.
+    create a new container to mount 
+    
+    ```
+    docker container create --name hawking-stellar-core -v hawking_core-data:/data hello-world
+    docker cp ./data-result/buckets hawking-stellar-core:/data/
+    docker cp ./history-result/ hawking-stellar-core:/data/history/
+    ```
+    
 * `history-result` directory: contains the full history that can be published to help other validator nodes to catch up (e.g., S3, GCS, IPFS, or any other file storage).
 
 Note: make sure you have a consistent state of the three pieces of data before starting Stellar Core in SCP mode (e.g., when moving data to another machine).
