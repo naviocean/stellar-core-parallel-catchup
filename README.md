@@ -29,6 +29,7 @@ Arguments:
 * `LEDGER_MAX`: largest ledger number you want, usually you'll want the latest one which is exposed as `core_latest_ledger` in any synced Horizon server, e.g. https://horizon.stellar.org/.
 * `CHUNK_SIZE`: number of ledgers to work on in one worker.
 * `WORKERS`: number of workers that should be spawned. For best performance this should not exceed the number of CPUs.
+
 `Note: LEDGER_MAX % CHUNK_SIZE == 0`
 
 ## Hardware sizing and timing examples
