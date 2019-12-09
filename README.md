@@ -104,6 +104,83 @@ You will get 3 important pieces of data for Stellar Core:
 
 Note: make sure you have a consistent state of the three pieces of data before starting Stellar Core in SCP mode (e.g., when moving data to another machine).
 
+## Fix issue `Gap detected in stellar-core database (ledger=XXXX)`
+
+ `"history_latest_ledger": 632219,` -> We'll call this value `ORIGINAL_CURRENT_LEDGER`
+ 
+ ` "history_elder_ledger": 40010,` -> We'll call this value `ORIGINAL_ELDER_LEDGER`
+
+#### Backfill history
+
+1. Reingest Horizon
+```
+docker-compose -p hawking exec stellar-horizon horizon db backfill
+```
+2. Backfill
+```
+docker-compose -p hawking exec stellar-horizon horizon db backfill {ORIGINAL_ELDER_LEDGER - 1}
+```
+3. Stop your stellar-core instance
+4. Connect to your core database, and run
+```sql
+SELECT ledgerseq FROM ledgerheaders ORDER BY ledgerseq ASC LIMIT 1;
+```
+this will return the _smallest_ ledger that your core instance knows about.
+
+We'll call this value `ORIGINAL_LOW_LEDGER` for now on.
+
+We'll call `LOW_LEDGER` the value that you want in history.
+
+#### Reconstruction steps
+
+Steps here are going to reconstruct history for the range `LOW_LEDGER .. ORIGINAL_LOW_LEDGER`
+
+1. Prepare a fresh new core instance with a similar configuration file
+    * use a different database, sqlite even
+    * don't start it after running `newdb`
+2. Perform a command line catchup to replay a range of ledger that includes the target range
+```
+stellar-core --conf X.conf catchup ORIGINAL_LOW_LEDGER/(ORIGINAL_LOW_LEDGER-LOW_LEDGER)
+```
+
+If this succeeds you can proceed to the next step
+
+#### Merging steps
+
+Repeat the following steps for the following sql tables:
+* `ledgerheaders` (`ledgerseq`)
+* `txhistory` (`ledgerseq`)
+* `txfeehistory` (`ledgerseq`)
+not imported from history as of this writing:
+* `scphistory`
+* `scpquorums`
+
+We'll use `ledgerheaders` here to illustrate.
+
+1. On the temporary node, export the data from `ledgerheaders` (save into a file `ledgerHeaders.sql`)
+```sql
+SELECT * from ledgerheaders WHERE ledgerseq >= LOW_LEDGER AND ledgerseq < ORIGINAL_LOW_LEDGER
+```
+2. (optional) verify that the hash of ledger `ORIGINAL_LOW_LEDGER-1` is the one stored in ledger `ORIGINAL_LOW_LEDGER`
+```sql
+SELECT ledgerhash FROM ledgerheaders WHERE ledgerseq = ORIGINAL_LOW_LEDGER-1
+```
+3. Login into the core database
+```sql
+SELECT prevhash FROM ledgerheaders WHERE ledgerseq = ORIGINAL_LOW_LEDGER
+```
+verify that this value is the same than the `ledgerhash` returned on the previous step
+4.  and import the data exported in step 1
+5. Verify that you do not have gaps
+```sql
+SELECT lh1.ledgerseq FROM ledgerheaders AS lh1 WHERE lh1.ledgerseq NOT IN ( SELECT lh2.ledgerseq-1 FROM ledgerheaders AS lh2 WHERE lh2.ledgerseq = lh1.ledgerseq + 1);
+```
+
+When this is done, you can start core, wait for it to catchup to the network.
+
+After that you can reset Horizon and have it ingest all data.
+
+
 ## Reset
 
 If you need to start from scratch again you can delete all docker-compose projects:
